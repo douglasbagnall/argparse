@@ -41,6 +41,44 @@ argparse_error(struct argparse *self, const struct argparse_option *opt,
     exit(1);
 }
 
+
+static int multiply_uint64_by_suffix(uint64_t *v, char suffix)
+{
+    uint64_t mul;
+    const uint64_t base = 1024;
+    switch(suffix) {
+    case 'K':
+    case 'k':
+        mul = base;
+        break;
+    case 'M':
+    case 'm':
+        mul = base * base;
+        break;
+    case 'G':
+    case 'g':
+        mul = base * base * base;
+        break;
+    case 'T':
+    case 't':
+        mul = base * base * base * base;
+        break;
+    case 'P':
+        mul = base * base * base * base * base;
+        break;
+    case 'E':
+        mul = base * base * base * base * base * base;
+        break;
+    default:
+        return 1;
+    }
+    if (*v > UINT64_MAX / mul) {
+        return 1;
+    }
+    *v *= mul;
+    return 0;
+}
+
 static int
 argparse_getvalue(struct argparse *self, const struct argparse_option *opt,
                   int flags)
@@ -90,6 +128,23 @@ argparse_getvalue(struct argparse *self, const struct argparse_option *opt,
         if (s[0] != '\0')
             argparse_error(self, opt, "expects a numerical value", flags);
         break;
+    case ARGPARSE_OPT_UINT64:
+        if (self->optvalue) {
+            *(uint64_t *)opt->value = strtoull(self->optvalue, (char **)&s, 0);
+            self->optvalue = NULL;
+        } else if (self->argc > 1) {
+            self->argc--;
+            *(uint64_t *)opt->value = strtoull(*++self->argv, (char **)&s, 0);
+        } else {
+            argparse_error(self, opt, "requires a value", flags);
+        }
+        if (s[0] != '\0') {
+            if (s[1] != '\0' ||
+                multiply_uint64_by_suffix((uint64_t *)opt->value, s[0]) != 0) {
+                argparse_error(self, opt, "expects a numerical value", flags);
+            }
+        }
+        break;
     default:
         assert(0);
     }
@@ -111,6 +166,7 @@ argparse_options_check(const struct argparse_option *options)
         case ARGPARSE_OPT_BOOLEAN:
         case ARGPARSE_OPT_BIT:
         case ARGPARSE_OPT_INTEGER:
+        case ARGPARSE_OPT_UINT64:
         case ARGPARSE_OPT_STRING:
         case ARGPARSE_OPT_GROUP:
             continue;
@@ -296,6 +352,8 @@ argparse_usage(struct argparse *self)
         }
         if (options->type == ARGPARSE_OPT_INTEGER) {
             len += strlen("=<int>");
+        } else if (options->type == ARGPARSE_OPT_UINT64) {
+            len += strlen("=<unsigned int>");
         } else if (options->type == ARGPARSE_OPT_STRING) {
             len += strlen("=<str>");
         }
@@ -328,6 +386,8 @@ argparse_usage(struct argparse *self)
         }
         if (options->type == ARGPARSE_OPT_INTEGER) {
             pos += fprintf(stdout, "=<int>");
+        } else if (options->type == ARGPARSE_OPT_UINT64) {
+            pos += fprintf(stdout, "=<unsigned int>");
         } else if (options->type == ARGPARSE_OPT_STRING) {
             pos += fprintf(stdout, "=<str>");
         }
